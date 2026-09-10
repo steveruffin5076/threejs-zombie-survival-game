@@ -1,0 +1,150 @@
+@import "tailwindcss";
+
+/* ── fonts: Rubik Glitch (display) · Special Elite (typewriter) · Oswald (HUD) ── */
+.font-display { font-family: 'Rubik Glitch', 'Impact', sans-serif; }
+.font-type { font-family: 'Special Elite', 'Courier New', monospace; }
+.hud-font { font-family: 'Oswald', 'Arial Narrow', sans-serif; }
+
+/* ── film overlays ─────────────────────────────────────────────────────────── */
+.scanlines {
+  position: fixed; inset: 0; z-index: 30; pointer-events: none; opacity: 0.5;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+.noise-overlay {
+  position: fixed; inset: -40px; z-index: 31; pointer-events: none; opacity: 0.05;
+  background-image: radial-gradient(rgba(255,255,255,0.9) 0.6px, transparent 0.7px);
+  background-size: 5px 5px;
+  animation: grainShift 0.9s steps(4) infinite;
+}
+@keyframes grainShift {
+  0% { transform: translate(0,0); } 25% { transform: translate(-12px,7px); }
+  50% { transform: translate(9px,-14px); } 75% { transform: translate(-6px,-5px); }
+  100% { transform: translate(11px,10px); }
+}
+
+/* ── crosshair ─────────────────────────────────────────────────────────────── */
+.crosshair { margin-left: -15px; margin-top: -15px; transition: opacity 0.2s; opacity: 0.92;
+  filter: drop-shadow(0 0 2px rgba(0,0,0,0.9)); }
+
+/* ── HUD chips ─────────────────────────────────────────────────────────────── */
+.chip {
+  display: flex; align-items: center; gap: 7px;
+  background: rgba(8,9,12,0.72); border: 1px solid rgba(120,120,130,0.32);
+  padding: 6px 11px; color: #a9a9b2; backdrop-filter: blur(3px);
+}
+.chip-btn { cursor: pointer; transition: all 0.15s; pointer-events: auto; }
+.chip-btn:hover { border-color: #ff4152; color: #ff8089; }
+
+.safe-chip {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(8,9,12,0.72); border: 1px solid rgba(120,120,130,0.28);
+  padding: 7px 12px; color: #6e6e76;
+  transition: color 0.3s, border-color 0.3s;
+}
+.safe-chip .dot { width: 8px; height: 8px; border-radius: 999px; background: #3a3a40; transition: all 0.3s; }
+.safe-chip.near { color: #b8ffcf; border-color: rgba(81,255,122,0.55); }
+.safe-chip.near .dot { background: #51ff7a; box-shadow: 0 0 9px #51ff7a; animation: pulseDot 1s infinite; }
+.safe-chip.reached { color: #0c140d; background: #51ff7a; border-color: #51ff7a; }
+.safe-chip.reached .dot { background: #0c140d; animation: none; box-shadow: none; }
+@keyframes pulseDot { 50% { opacity: 0.35; } }
+
+/* ammo pips */
+.pip { width: 5px; height: 14px; background: #26262c; transform: skewX(-18deg); }
+.pip.live { background: linear-gradient(180deg, #ffd9a0 0%, #b8934a 55%, #6e5a2e 100%);
+  box-shadow: 0 0 5px rgba(255, 200, 120, 0.35); }
+.blink { animation: blinkAnim 0.8s steps(2) infinite; }
+@keyframes blinkAnim { 50% { opacity: 0.25; } }
+
+.hp-fill { box-shadow: 0 0 12px rgba(220,30,45,0.4); }
+
+/* hint bar */
+.hint-bar {
+  display: flex; align-items: center; gap: 16px; pointer-events: none;
+  background: rgba(5,6,9,0.66); border: 1px solid rgba(120,120,130,0.25);
+  padding: 8px 18px; font-family: 'Oswald', sans-serif;
+  font-size: 11px; letter-spacing: 0.22em; color: #8a8a92;
+  animation: fadeUp 0.6s ease both;
+}
+.hint-bar b { color: #e8e4da; }
+
+/* surge banner */
+.surge-banner {
+  display: flex; align-items: center; gap: 10px;
+  font-family: 'Oswald', sans-serif; letter-spacing: 0.4em; font-size: 14px;
+  color: #ff5c48; background: rgba(20,4,4,0.75);
+  border: 1px solid rgba(255,70,50,0.5);
+  padding: 10px 22px;
+  animation: surgeIn 0.35s cubic-bezier(0.2, 2.2, 0.4, 1) both, blinkAnim 0.7s steps(2) infinite;
+  text-shadow: 0 0 12px rgba(255,60,40,0.7);
+}
+@keyframes surgeIn { from { transform: translate(-50%, -24px) scale(0.8); opacity: 0; } }
+
+/* ── full-screen phase overlays ────────────────────────────────────────────── */
+.overlay-screen {
+  position: fixed; inset: 0; z-index: 45;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; text-align: center;
+  background: radial-gradient(ellipse at 50% 42%, rgba(10,3,4,0.25), rgba(0,0,0,0.55) 75%);
+  animation: fadeUp 0.45s ease both;
+  pointer-events: auto; cursor: default;
+}
+@keyframes fadeUp { from { opacity: 0; transform: translateY(14px); } }
+
+.banner-kicker {
+  font-family: 'Oswald', sans-serif; font-size: 13px; letter-spacing: 0.55em; color: #8d8d95;
+}
+.banner-title { font-size: clamp(42px, 7vw, 84px); line-height: 0.95; letter-spacing: 0.04em;
+  text-shadow: 0 0 34px rgba(255,255,255,0.12); }
+.banner-title.dead { text-shadow: 0 0 44px rgba(255,20,35,0.5); }
+.banner-sub { font-family: 'Special Elite', monospace; color: #8d8d95; letter-spacing: 0.3em; font-size: 13px; }
+
+/* ── buttons ───────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 9px;
+  font-family: 'Oswald', sans-serif; letter-spacing: 0.3em; font-size: 13px;
+  color: #c9c9d0; background: rgba(10,11,15,0.8);
+  border: 1px solid rgba(140,140,150,0.4);
+  padding: 12px 26px; cursor: pointer;
+  transition: all 0.16s ease; position: relative;
+}
+.btn:hover { border-color: #ff4152; color: #fff; background: rgba(60,8,12,0.75);
+  box-shadow: 0 0 22px rgba(255,40,55,0.25), inset 0 0 14px rgba(255,40,55,0.12); }
+.btn:active { transform: translateY(1px) scale(0.99); }
+.btn-primary { border-color: #a11220; color: #ffdfe2; background: linear-gradient(180deg, rgba(120,14,22,0.85), rgba(60,7,11,0.9));
+  box-shadow: 0 0 18px rgba(200,20,35,0.25); }
+.btn-primary:hover { border-color: #ff5c6a; color: #fff; }
+.kbd { border: 1px solid rgba(255,255,255,0.35); padding: 1px 7px; font-size: 10px; margin-left: 4px;
+  font-family: 'Special Elite', monospace; opacity: 0.7; }
+
+/* ── start menu ────────────────────────────────────────────────────────────── */
+.menu-bg { background: radial-gradient(ellipse at 50% 30%, rgba(24,6,9,0.4), rgba(0,0,0,0.72) 78%); }
+.menu-title {
+  font-size: clamp(64px, 13vw, 170px); line-height: 0.9; color: #e8e4da;
+  text-shadow: 0 0 60px rgba(194, 32, 48, 0.35), 0 2px 0 #4d0d13, 0 4px 0 #2b0609;
+}
+.menu-blood {
+  position: absolute; top: -60px; right: 12%; width: 340px; height: 340px; pointer-events: none;
+  background: radial-gradient(circle at 60% 30%, rgba(160,12,22,0.28), transparent 55%),
+              radial-gradient(circle at 30% 70%, rgba(120,8,16,0.22), transparent 50%);
+  filter: blur(2px);
+}
+/* glitch layer */
+.glitch { position: relative; }
+.glitch::before, .glitch::after {
+  content: attr(data-text); position: absolute; inset: 0; overflow: hidden;
+}
+.glitch::before { color: #ff2438; transform: translate(-3px, 1px); clip-path: inset(18% 0 62% 0);
+  animation: glitchA 3.2s infinite steps(1); opacity: 0.8; }
+.glitch::after { color: #37e0e8; transform: translate(3px, -1px); clip-path: inset(64% 0 12% 0);
+  animation: glitchB 2.7s infinite steps(1); opacity: 0.7; }
+@keyframes glitchA {
+  0%, 91%, 100% { clip-path: inset(18% 0 62% 0); transform: translate(-3px, 1px); }
+  92% { clip-path: inset(40% 0 30% 0); transform: translate(-7px, 0); }
+  95% { clip-path: inset(5% 0 80% 0); transform: translate(4px, 2px); }
+}
+@keyframes glitchB {
+  0%, 88%, 100% { clip-path: inset(64% 0 12% 0); transform: translate(3px, -1px); }
+  89% { clip-path: inset(10% 0 70% 0); transform: translate(6px, 1px); }
+  94% { clip-path: inset(75% 0 5% 0); transform: translate(-5px, -2px); }
+}
