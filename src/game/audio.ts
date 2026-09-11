@@ -22,8 +22,12 @@ export class AudioManager {
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       this.ctx = new AC();
       this.master = this.ctx.createGain();
-      this.master.gain.value = this.muted ? 0 : 0.85;
-      this.master.connect(this.ctx.destination);
+      this.master.gain.value = this.muted ? 0 : 0.7;
+      const comp = this.ctx.createDynamicsCompressor();
+      comp.threshold.value = -14; comp.knee.value = 22; comp.ratio.value = 9;
+      comp.attack.value = 0.003; comp.release.value = 0.14;
+      this.master.connect(comp);
+      comp.connect(this.ctx.destination);
       // shared white-noise buffer
       const len = this.ctx.sampleRate * 2;
       this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
@@ -35,7 +39,7 @@ export class AudioManager {
 
   setMuted(m: boolean) {
     this.muted = m;
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.85, this.ctx.currentTime, 0.02);
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 0.7, this.ctx.currentTime, 0.02);
   }
   get isMuted() { return this.muted; }
 
@@ -113,27 +117,57 @@ export class AudioManager {
     o.start(t); o.stop(t + dur + 0.05);
   }
 
-  // ── Glock 19 ───────────────────────────────────────────────────────────────
-  shot() {
+  // ── weapon fire / reload ─────────────────────────────────────────────────────
+  /** profile defaults ('pistol', 45ms) reproduce the original Glock-only sound exactly */
+  shot(profile: 'pistol' | 'smg' | 'shotgun' | 'rifle' = 'pistol', guardMs = 45) {
     if (!this.ctx) return;
     const now = performance.now();
-    if (now - this.lastShot < 45) return; // voice guard on spam
+    if (now - this.lastShot < guardMs) return; // voice guard on spam
     this.lastShot = now;
-    // supersonic crack
-    this.noise(0.07, f => { f.type = 'highpass'; f.frequency.value = 1400; }, 0.5);
-    // body boom
-    this.noise(0.16, f => { f.type = 'lowpass'; f.frequency.setValueAtTime(2600, this.ctx!.currentTime); f.frequency.exponentialRampToValueAtTime(240, this.ctx!.currentTime + 0.15); }, 0.7);
-    this.tone('sine', 160, 52, 0.13, 0.5);
-    // mech click
-    this.noise(0.03, f => { f.type = 'bandpass'; f.frequency.value = 3200; }, 0.2, 0.01);
+    if (profile === 'pistol') {
+      this.noise(0.07, f => { f.type = 'highpass'; f.frequency.value = 1400; }, 0.5);
+      this.noise(0.16, f => { f.type = 'lowpass'; f.frequency.setValueAtTime(2600, this.ctx!.currentTime); f.frequency.exponentialRampToValueAtTime(240, this.ctx!.currentTime + 0.15); }, 0.7);
+      this.tone('sine', 160, 52, 0.13, 0.5);
+      this.noise(0.03, f => { f.type = 'bandpass'; f.frequency.value = 3200; }, 0.2, 0.01);
+    } else if (profile === 'smg') {
+      this.noise(0.05, f => { f.type = 'highpass'; f.frequency.value = 1500; }, 0.36);
+      this.noise(0.1, f => { f.type = 'lowpass'; f.frequency.setValueAtTime(2400, this.ctx!.currentTime); f.frequency.exponentialRampToValueAtTime(280, this.ctx!.currentTime + 0.09); }, 0.55);
+      this.tone('sine', 200, 70, 0.09, 0.4);
+      this.noise(0.02, f => { f.type = 'bandpass'; f.frequency.value = 3400; }, 0.15, 0.008);
+    } else if (profile === 'rifle') {
+      this.noise(0.08, f => { f.type = 'highpass'; f.frequency.value = 1900; }, 0.55);
+      this.noise(0.19, f => { f.type = 'lowpass'; f.frequency.setValueAtTime(2800, this.ctx!.currentTime); f.frequency.exponentialRampToValueAtTime(200, this.ctx!.currentTime + 0.17); }, 0.72);
+      this.tone('sine', 150, 46, 0.15, 0.52);
+      this.noise(0.03, f => { f.type = 'bandpass'; f.frequency.value = 3000; }, 0.2, 0.01);
+    } else { // shotgun
+      this.noise(0.32, f => { f.type = 'lowpass'; f.frequency.setValueAtTime(1800, this.ctx!.currentTime); f.frequency.exponentialRampToValueAtTime(110, this.ctx!.currentTime + 0.3); }, 0.9);
+      this.tone('sine', 110, 30, 0.28, 0.75);
+      this.noise(0.06, f => { f.type = 'highpass'; f.frequency.value = 1200; }, 0.5);
+      this.noise(0.06, f => { f.type = 'bandpass'; f.frequency.value = 800; }, 0.3, 0.28); // pump
+    }
   }
   dryFire() { this.noise(0.04, f => { f.type = 'bandpass'; f.frequency.value = 2600; }, 0.22); }
-  reload() {
-    this.noise(0.05, f => { f.type = 'bandpass'; f.frequency.value = 1800; }, 0.3, 0.02);        // mag out
-    this.noise(0.04, f => { f.type = 'bandpass'; f.frequency.value = 900; }, 0.24, 0.3);        // clatter
-    this.noise(0.05, f => { f.type = 'bandpass'; f.frequency.value = 2000; }, 0.34, 0.62);      // mag in
-    this.noise(0.09, f => { f.type = 'bandpass'; f.frequency.value = 3300; }, 0.4, 0.82);       // slide rack
-    this.tone('square', 220, 120, 0.05, 0.1, 0.82);
+  /** profile defaults ('pistol', 1.05s) reproduce the original Glock reload foley exactly */
+  reload(profile: 'pistol' | 'smg' | 'shotgun' | 'rifle' = 'pistol', dur = 1.05) {
+    if (profile === 'shotgun') {
+      const shells = 4;
+      for (let i = 0; i < shells; i++) {
+        const when = (i / shells) * dur * 0.75;
+        this.noise(0.05, f => { f.type = 'bandpass'; f.frequency.value = 900 + Math.random() * 200; }, 0.3, when);
+      }
+      this.noise(0.08, f => { f.type = 'bandpass'; f.frequency.value = 2600; }, 0.35, dur * 0.85);
+    } else {
+      const k = dur / 1.05;
+      this.noise(0.05, f => { f.type = 'bandpass'; f.frequency.value = 1800; }, 0.3, 0.02 * k);   // mag out
+      this.noise(0.04, f => { f.type = 'bandpass'; f.frequency.value = 900; }, 0.24, 0.3 * k);    // clatter
+      this.noise(0.05, f => { f.type = 'bandpass'; f.frequency.value = 2000; }, 0.34, 0.62 * k);  // mag in
+      this.noise(0.09, f => { f.type = 'bandpass'; f.frequency.value = 3300; }, 0.4, 0.82 * k);   // slide rack
+      this.tone('square', 220, 120, 0.05, 0.1, 0.82 * k);
+    }
+  }
+  weaponSwap() {
+    this.noise(0.03, f => { f.type = 'bandpass'; f.frequency.value = 1200; }, 0.18, 0);
+    this.noise(0.03, f => { f.type = 'bandpass'; f.frequency.value = 1600; }, 0.18, 0.09);
   }
 
   // ── impacts ────────────────────────────────────────────────────────────────

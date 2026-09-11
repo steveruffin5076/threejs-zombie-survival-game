@@ -21,6 +21,7 @@ export interface ZombieTuning {
   exploderP: number;
   speedMul: number;
   hpMul: number;
+  sideMix: number;    // fraction of spawns that come from the left (0 = right-only, campaign default)
 }
 
 export class Zombie {
@@ -36,6 +37,7 @@ export class Zombie {
   attackT = 0; attackCd = 0;
   fuseT = 0; dyingT = 0; fallDir = 1;
   facing = -1;
+  bias: 1 | -1 = -1; // default shamble direction when far from the player (campaign: always left)
   id = 0;
   constructor(type: ZombieType, scene: THREE.Scene) {
     this.type = type;
@@ -56,22 +58,25 @@ export class ZombieManager {
   private spawnT = 1;
   private surgeQueue = 0;
   private surgeT = 0;
-  tuning: ZombieTuning = { interval: 1.6, maxAlive: 12, runnerP: 0.12, exploderP: 0.06, speedMul: 1, hpMul: 1 };
+  tuning: ZombieTuning = { interval: 1.6, maxAlive: 12, runnerP: 0.12, exploderP: 0.06, speedMul: 1, hpMul: 1, sideMix: 0 };
   spawningEnabled = true;
+  /** arena mode: no camera-distance culling (both sides are always in play); clamp to bounds instead */
+  twoSided = false;
+  arenaMinX = 0; arenaMaxX = 0;
   private idSeq = 1;
 
   constructor(private scene: THREE.Scene, private fx: Effects, private audio: AudioManager) {
-    for (let i = 0; i < 30; i++) this.add('walker');
-    for (let i = 0; i < 14; i++) this.add('runner');
-    for (let i = 0; i < 8; i++) this.add('exploder');
+    for (let i = 0; i < 40; i++) this.add('walker');
+    for (let i = 0; i < 20; i++) this.add('runner');
+    for (let i = 0; i < 12; i++) this.add('exploder');
   }
   private add(t: ZombieType) {
     const z = new Zombie(t, this.scene);
     this.pool.push(z); this.byType[t].push(z);
   }
 
-  /** spawn one zombie of the given type to the right of the camera */
-  spawn(type: ZombieType, camX: number, viewHalf: number, playerX: number): Zombie | null {
+  /** spawn one zombie of the given type; side 1 = from the right (default, campaign), -1 = from the left */
+  spawn(type: ZombieType, camX: number, viewHalf: number, playerX: number, side: 1 | -1 = 1): Zombie | null {
     const z = this.byType[type].find(q => !q.alive);
     if (!z) return null;
     const base = type === 'runner' ? Z_RUNNER : type === 'exploder' ? Z_EXPLODER : Z_WALKER;
@@ -81,9 +86,11 @@ export class ZombieManager {
     z.speed = base.speed * this.tuning.speedMul * (0.85 + Math.random() * 0.4);
     z.alive = true;
     z.state = 'walk';
+    z.bias = side > 0 ? -1 : 1; // shambles back towards the player's side of the arena when far away
     // runners ambush from closer; walkers shuffle in from farther out
     const off = type === 'runner' ? 1 + Math.random() * 4 : type === 'exploder' ? 3 + Math.random() * 6 : 2 + Math.random() * 9;
-    z.x = Math.max(camX + viewHalf + off, playerX + 7);
+    z.x = side > 0 ? Math.max(camX + viewHalf + off, playerX + 7) : Math.min(camX - viewHalf - off, playerX - 7);
+    if (this.twoSided) z.x = THREE.MathUtils.clamp(z.x, this.arenaMinX, this.arenaMaxX);
     z.z = (Math.random() - 0.5) * 0.36;
     z.id = this.idSeq++;
     z.attackCd = 0; z.attackT = 0; z.dyingT = 0;
@@ -98,11 +105,13 @@ export class ZombieManager {
   aliveCount(): number { return this.pool.reduce((a, z) => a + (z.alive && z.state !== 'dying' ? 1 : 0), 0); }
   forEachAlive(cb: (z: Zombie) => void) { for (const z of this.pool) if (z.alive && z.state !== 'dying') cb(z); }
 
-  /** apply damage; returns true if the zombie died from this hit */
-  damage(z: Zombie, dmg: number, headshot: boolean, dirX: number): boolean {
+  /** apply damage; returns true if the zombie died from this hit.
+   * fxAmount scales blood-puff count only, for multi-pellet weapons (shotgun) to avoid a
+   * single blast draining the pool. */
+  damage(z: Zombie, dmg: number, headshot: boolean, dirX: number, fxAmount = 1): boolean {
     if (!z.alive || z.state === 'dying') return false;
     z.hp -= dmg;
-    this.fx.bloodBurst(z.x, headshot ? z.headY() : z.bodyY(), z.z, dirX, headshot ? 1.4 : 1, headshot);
+    this.fx.bloodBurst(z.x, headshot ? z.headY() : z.bodyY(), z.z, dirX, (headshot ? 1.4 : 1) * fxAmount, headshot);
     if (Math.random() < 0.3) this.fx.splat(z.x, z.z);
     if (z.hp <= 0) { this.kill(z, dirX, headshot); return true; }
     if (headshot) this.audio.headshot(); else this.audio.hitFlesh();
@@ -139,7 +148,8 @@ export class ZombieManager {
         this.spawnT = this.tuning.interval * (0.75 + Math.random() * 0.5);
         const r = Math.random();
         const type: ZombieType = r < this.tuning.exploderP ? 'exploder' : r < this.tuning.exploderP + this.tuning.runnerP ? 'runner' : 'walker';
-        this.spawn(type, camX, viewHalf, playerX);
+        const side: 1 | -1 = Math.random() < this.tuning.sideMix ? -1 : 1;
+        this.spawn(type, camX, viewHalf, playerX, side);
       }
       if (this.surgeQueue > 0) {
         this.surgeT -= dt;
@@ -147,7 +157,8 @@ export class ZombieManager {
           this.surgeT = 0.28;
           this.surgeQueue--;
           const type: ZombieType = Math.random() < this.tuning.runnerP + 0.12 ? 'runner' : 'walker';
-          this.spawn(type, camX, viewHalf, playerX);
+          const side: 1 | -1 = Math.random() < this.tuning.sideMix ? -1 : 1;
+          this.spawn(type, camX, viewHalf, playerX, side);
         }
       }
     }
@@ -169,12 +180,13 @@ export class ZombieManager {
       const adx = Math.abs(dx);
 
       // ── movement ──
-      let moveDir = -1; // default: shamble left
-      if (playerAlive && (z.type === 'runner' || adx < 13)) moveDir = Math.sign(dx) || -1;
+      let moveDir: number = z.bias; // default: shamble back towards the player's side
+      if (playerAlive && (z.type === 'runner' || adx < 13)) moveDir = Math.sign(dx) || z.bias;
       if (z.state === 'walk') {
         let sp = z.speed;
         if (z.type === 'runner') sp *= 0.75 + Math.abs(Math.sin(time * 3 + z.phase)) * 0.5; // loping sprint
         z.x += moveDir * sp * dt;
+        if (this.twoSided) z.x = THREE.MathUtils.clamp(z.x, this.arenaMinX, this.arenaMaxX);
         z.facing = moveDir;
       }
 
@@ -227,8 +239,11 @@ export class ZombieManager {
       g.position.x = z.x;
       g.rotation.y = z.facing > 0 ? 0 : Math.PI;
 
-      // recycle far behind
-      if (z.x < camX - viewHalf - 10) {
+      // recycle: campaign culls anything left behind by camera distance (right-only spawns);
+      // arena mode has zombies on both sides at once, so distance culling would delete the far
+      // side while the player camps one end — bounds-clamping above keeps population in check instead.
+      const outOfBounds = this.twoSided ? false : z.x < camX - viewHalf - 10;
+      if (outOfBounds) {
         this.fx.zombiePoof(z.x + 2, 0.2, z.z, new THREE.Color(0.05, 0.06, 0.08));
         z.alive = false; g.visible = false; z.x = OFF;
       }

@@ -30,7 +30,7 @@ class SparkSystem {
   private cap: number;
   private geo: THREE.BufferGeometry;
 
-  constructor(scene: THREE.Scene, cap = 640) {
+  constructor(scene: THREE.Scene, cap = 900) {
     this.cap = cap;
     this.pos = new Float32Array(cap * 3);
     this.vel = new Float32Array(cap * 3);
@@ -149,6 +149,7 @@ export class Effects {
   private blood: PuffPool;
   private smoke: PuffPool;
   private casings: { m: THREE.Mesh; vel: THREE.Vector3; spin: THREE.Vector3; life: number }[] = [];
+  private casingCursor = 0;
   private tracers: { m: THREE.Mesh; mat: THREE.MeshBasicMaterial; life: number }[] = [];
   private splats: { m: THREE.Mesh; mat: THREE.MeshBasicMaterial; life: number }[] = [];
   private splatCursor = 0;
@@ -169,8 +170,8 @@ export class Effects {
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.sparks = new SparkSystem(scene);
-    this.blood = new PuffPool(scene, 72, bloodSpriteTexture(), THREE.NormalBlending);
-    this.smoke = new PuffPool(scene, 96, softSpriteTexture(), THREE.NormalBlending);
+    this.blood = new PuffPool(scene, 160, bloodSpriteTexture(), THREE.NormalBlending);
+    this.smoke = new PuffPool(scene, 150, softSpriteTexture(), THREE.NormalBlending);
 
     // muzzle flash sprite + light
     this.flashMat = new THREE.SpriteMaterial({ map: muzzleSpriteTexture(), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, opacity: 0 });
@@ -188,7 +189,7 @@ export class Effects {
     // shell casings
     const brassGeo = new THREE.BoxGeometry(0.07, 0.028, 0.028);
     const brassMat = new THREE.MeshStandardMaterial({ color: 0xb8934a, metalness: 0.75, roughness: 0.35 });
-    for (let i = 0; i < 40; i++) {
+    for (let i = 0; i < 110; i++) {
       const m = new THREE.Mesh(brassGeo, brassMat);
       m.visible = false; m.castShadow = false;
       scene.add(m);
@@ -196,7 +197,7 @@ export class Effects {
     }
 
     // hitscan tracers
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 28; i++) {
       const mat = new THREE.MeshBasicMaterial({ color: 0xffe8b0, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
       const m = new THREE.Mesh(new THREE.BoxGeometry(1, 0.016, 0.016), mat);
       m.visible = false;
@@ -243,34 +244,36 @@ export class Effects {
   }
 
   // ── spawners ───────────────────────────────────────────────────────────────
-  muzzle(x: number, y: number, z: number, angle: number) {
+  muzzle(x: number, y: number, z: number, angle: number, scale = 1) {
     this.flash.visible = true;
     this.flash.position.set(x, y, z);
-    this.flash.scale.setScalar(0.55 + R() * 0.35);
+    this.flash.scale.setScalar((0.55 + R() * 0.35) * scale);
     this.flashMat.rotation = angle + RS(0.35);
     this.flashMat.opacity = 0.95;
     this.flashT = 0.05;
     this.muzzleLight.position.set(x, y, z + 0.4);
-    this.muzzleLight.intensity = 26;
+    this.muzzleLight.intensity = 26 * scale;
     for (let i = 0; i < 3; i++) {
       const a = angle + RS(0.4);
       this.sparks.spawn(x, y, z, Math.cos(a) * (5 + R() * 4), Math.sin(a) * (5 + R() * 4) + 1, RS(1.4), 1, 0.75, 0.35, 0.16, 0.1 + R() * 0.08, -6);
     }
   }
 
-  tracer(ax: number, ay: number, az: number, bx: number, by: number, bz: number) {
+  tracer(ax: number, ay: number, az: number, bx: number, by: number, bz: number, w = 0.016, color = 0xffe8b0) {
     const t = this.tracers.find(q => q.life <= 0) ?? this.tracers[0];
     const dx = bx - ax, dy = by - ay, dz = bz - az;
     const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
     t.m.visible = true;
     t.m.position.set((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2);
-    t.m.scale.set(len, 1, 1);
+    t.m.scale.set(len, w / 0.016, w / 0.016);
     t.m.rotation.z = Math.atan2(dy, dx);
+    t.mat.color.setHex(color);
     t.mat.opacity = 0.85; t.life = 0.07;
   }
 
   casing(x: number, y: number, z: number, face: number) {
-    const c = this.casings.find(q => q.life <= 0) ?? this.casings[0];
+    let c = this.casings.find(q => q.life <= 0);
+    if (!c) { c = this.casings[this.casingCursor]; this.casingCursor = (this.casingCursor + 1) % this.casings.length; }
     c.m.visible = true;
     c.m.position.set(x, y, z);
     c.vel.set(-face * (0.7 + R() * 0.9), 2.3 + R() * 1.2, RS(1.4));
@@ -280,7 +283,7 @@ export class Effects {
 
   bloodBurst(x: number, y: number, z: number, dirX: number, amount = 1, headshot = false) {
     const c = new THREE.Color(0.28, 0.02, 0.03);
-    const n = Math.round((headshot ? 7 : 4) * amount);
+    const n = Math.max(1, Math.round((headshot ? 7 : 4) * amount));
     for (let i = 0; i < n; i++) {
       this.blood.spawn(x, y + RS(0.2), z + RS(0.12), dirX * (0.8 + R() * 2) + RS(1), 1 + R() * 2.4, RS(0.8),
         c, 0.85, 0.1 + R() * 0.12, 0.34 + R() * 0.3, 0.5 + R() * 0.4, -11, 0.94);

@@ -97,6 +97,9 @@ export class StageWorld {
   group = new THREE.Group();
   houseX: number;
   length: number;
+  minX: number;
+  maxX: number;
+  arena: boolean;
   emitters: Emitter[] = [];
   private lamps: Lamp[] = [];
   private signs: Sign[] = [];
@@ -118,11 +121,14 @@ export class StageWorld {
   private palette: ActPalette;
   private swayMeshes: { m: THREE.Mesh; seed: number }[] = [];
 
-  constructor(act: number, stage: number, length: number, palette: ActPalette) {
+  constructor(act: number, stage: number, length: number, palette: ActPalette, opts?: { arena?: boolean }) {
     loadShared();
     this.palette = palette;
+    this.arena = !!opts?.arena;
     this.length = length;
-    this.houseX = length - 7;
+    this.houseX = this.arena ? length + 999 : length - 7; // unreachable in arena mode
+    this.minX = this.arena ? 10 : 1.1;
+    this.maxX = this.arena ? length - 10 : length - 8.4;
     const rng = mulberry32(act * 7919 + stage * 104729 + 7);
 
     this.buildSky(act, rng);
@@ -130,7 +136,7 @@ export class StageWorld {
     this.buildMidRow(length, rng);
     this.buildFrontRow(length, act, rng);
     this.buildStreetProps(length, act, rng);
-    this.buildSafeHouse(act);
+    if (this.arena) this.buildBarricades(); else this.buildSafeHouse(act);
     this.buildSilhouettes(length, rng);
 
     // pooled light rigs
@@ -541,6 +547,50 @@ export class StageWorld {
     // safe zone should be calm: no props emitters past here
   }
 
+  // ── endless arena: sealed barricades at both ends instead of a safe house ────
+  private buildBarricades() {
+    for (const bx of [6, this.length - 6]) {
+      const block = new THREE.Mesh(SHARED.unitBox, SHARED.bunkerMat);
+      block.scale.set(3.2, 2.6, 2.4);
+      block.position.set(bx, 1.3, -1.8);
+      block.castShadow = true; block.receiveShadow = true;
+      this.group.add(block);
+
+      for (let i = 0; i < 2; i++) {
+        const car = new THREE.Mesh(SHARED.unitBox, i === 0 ? SHARED.carBodyA : SHARED.carBodyB);
+        car.scale.set(2.1, 0.5, 1.0);
+        car.position.set(bx + (Math.random() - 0.5) * 0.6, 0.35 + i * 0.55, -0.6 - Math.random() * 0.8);
+        car.rotation.y = Math.random() * 0.5;
+        car.castShadow = true;
+        this.group.add(car);
+      }
+
+      const fence = new THREE.Mesh(new THREE.PlaneGeometry(4, 3), SHARED.fenceMat);
+      this.disposables.push(fence.geometry);
+      fence.position.set(bx, 1.5, -3.4);
+      fence.castShadow = true;
+      this.group.add(fence);
+
+      for (let i = 0; i < 6; i++) {
+        const sb = new THREE.Mesh(SHARED.unitBox, SHARED.sand);
+        sb.scale.set(0.62, 0.3, 0.42);
+        sb.position.set(bx + ((i % 3) - 1) * 0.65, 0.16 + Math.floor(i / 3) * 0.3, -0.2 + (i % 3) * 0.5);
+        sb.castShadow = true;
+        this.group.add(sb);
+      }
+
+      const beaconM = new THREE.MeshBasicMaterial({ color: 0xff2030 });
+      this.disposables.push(beaconM);
+      const beacon = new THREE.Mesh(SHARED.unitBox, beaconM);
+      beacon.scale.set(0.1, 0.1, 0.1);
+      beacon.position.set(bx, 3.0, -1.8);
+      this.group.add(beacon);
+      this.swayMeshes.push({ m: beacon, seed: Math.random() * 10 });
+
+      this.emitters.push({ x: bx, y: 0.8, z: -1.8, kind: 'smoke', t: Math.random() * 2 });
+    }
+  }
+
   private buildSilhouettes(length: number, rng: () => number) {
     for (let i = 0; i < 7; i++) {
       const s = buildSilhouette();
@@ -561,21 +611,23 @@ export class StageWorld {
     this.moonGlow.position.set(camX + 16, 19, -30);
     this.moonCore.position.set(camX + 16, 19, -29);
 
-    // flag
-    if (this.flagLit) {
-      this.flagMat.emissive.setHex(0x28ff5e);
-      this.flagMat.color.setHex(0x12b84a);
-      this.flagMat.emissiveIntensity = 1.4 + Math.sin(t * 4) * 0.5;
-      this.flagCloth.rotation.y = Math.sin(t * 3.2) * 0.35;
-      this.doorLight.intensity = 16 + Math.sin(t * 3) * 3;
-    } else {
-      this.flagMat.emissive.setHex(0xff2030);
-      this.flagMat.emissiveIntensity = 0.14 + Math.sin(t * 1.6) * 0.08;
-      this.flagCloth.rotation.y = Math.sin(t * 1.2) * 0.12;
-      this.doorLight.intensity = 2.5 + Math.sin(t * 2) * 0.6;
+    // flag + beacon + sign (safe house only — not built in arena mode)
+    if (!this.arena) {
+      if (this.flagLit) {
+        this.flagMat.emissive.setHex(0x28ff5e);
+        this.flagMat.color.setHex(0x12b84a);
+        this.flagMat.emissiveIntensity = 1.4 + Math.sin(t * 4) * 0.5;
+        this.flagCloth.rotation.y = Math.sin(t * 3.2) * 0.35;
+        this.doorLight.intensity = 16 + Math.sin(t * 3) * 3;
+      } else {
+        this.flagMat.emissive.setHex(0xff2030);
+        this.flagMat.emissiveIntensity = 0.14 + Math.sin(t * 1.6) * 0.08;
+        this.flagCloth.rotation.y = Math.sin(t * 1.2) * 0.12;
+        this.doorLight.intensity = 2.5 + Math.sin(t * 2) * 0.6;
+      }
+      this.beacon.rotation.y += dt * 0.7;
+      this.houseSignMat.opacity = 0.92 + Math.sin(t * 7.3) * 0.08;
     }
-    this.beacon.rotation.y += dt * 0.7;
-    this.houseSignMat.opacity = 0.92 + Math.sin(t * 7.3) * 0.08;
 
     for (const s of this.swayMeshes) s.m.rotation.z = Math.sin(t * 0.9 + s.seed) * 0.06;
     for (const e of this.emberGlows) e.m.opacity = 0.28 + Math.abs(Math.sin(t * 5 + e.seed)) * 0.35;

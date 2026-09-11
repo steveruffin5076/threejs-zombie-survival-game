@@ -1,15 +1,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // player.ts — survivor controller: run/sprint/jump physics with coyote time,
-// cursor-driven aim rig (the arm+glock tracks the mouse position on the
-// gameplay plane), Glock 19 fire cadence (15-round magazine, unlimited
-// reserve), reload cycles, shell ejection, procedural walk/idle animation.
+// cursor-driven aim rig (the arm+gun tracks the mouse position on the
+// gameplay plane), a 4-slot weapon arsenal (Glock 19 always in slot 1, MP5 /
+// Shotgun / M4A1 fill 2-4 as they're picked up), per-weapon ammo + reload
+// cycles, shell ejection, procedural walk/idle animation.
 // ─────────────────────────────────────────────────────────────────────────────
 import * as THREE from 'three';
-import { buildPlayer, type PlayerRig } from './models';
-import {
-  PLAYER_HP, RUN_SPEED, SPRINT_SPEED, JUMP_VEL, GRAVITY,
-  MAG_SIZE, RELOAD_TIME, FIRE_COOLDOWN,
-} from './state';
+import { buildPlayer, setWeaponVisual, type PlayerRig } from './models';
+import { PLAYER_HP, RUN_SPEED, SPRINT_SPEED, JUMP_VEL, GRAVITY } from './state';
+import { WEAPONS, type WeaponId } from './weapons';
 import type { Effects } from './effects';
 import type { AudioManager } from './audio';
 
@@ -21,7 +20,6 @@ export class Player {
   private coyote = 0;
   hp = PLAYER_HP;
   alive = true;
-  ammo = MAG_SIZE;
   reloading = false;
   private reloadT = 0;
   private fireT = 0;
@@ -37,22 +35,44 @@ export class Player {
   jumpQueued = false;
   triggerHeld = false;
 
+  // ── arsenal ──────────────────────────────────────────────────────────────
+  slots: (WeaponId | null)[] = ['glock', null, null, null];
+  slot = 0;
+  mags: Record<WeaponId, number> = { glock: WEAPONS.glock.mag, mp5: 0, shotgun: 0, m4a1: 0 };
+  mods = { dmgMul: 1, magMul: 1, reloadMul: 1, rateMul: 1, speedMul: 1, hpBonus: 0 };
+  private swapT = 0;
+  private triggerLatch = false;
+
   constructor(scene: THREE.Scene) {
     this.rig = buildPlayer();
     scene.add(this.rig.group);
   }
 
+  get spec() { return WEAPONS[this.slots[this.slot]!]; }
+  /** kept as a getter so existing HUD/Game call sites (`player.ammo`) still work */
+  get ammo() { return this.mags[this.spec.id]; }
+
+  maxHp(): number { return PLAYER_HP + this.mods.hpBonus; }
+  private magSizeFor(id: WeaponId): number { return Math.round(WEAPONS[id].mag * this.mods.magMul); }
+  magSize(): number { return this.magSizeFor(this.spec.id); }
+
   reset(x: number) {
     this.x = x; this.y = 0; this.vy = 0; this.vx = 0;
-    this.hp = PLAYER_HP; this.alive = true;
-    this.ammo = MAG_SIZE; this.reloading = false; this.reloadT = 0;
+    this.slots = ['glock', null, null, null];
+    this.slot = 0;
+    this.mods = { dmgMul: 1, magMul: 1, reloadMul: 1, rateMul: 1, speedMul: 1, hpBonus: 0 };
+    this.mags = { glock: this.magSizeFor('glock'), mp5: 0, shotgun: 0, m4a1: 0 };
+    this.hp = this.maxHp(); this.alive = true;
+    this.reloading = false; this.reloadT = 0;
+    this.swapT = 0; this.triggerLatch = false;
     this.deathT = -1; this.kick = 0;
     this.rig.group.rotation.set(0, 0, 0);
     this.rig.group.position.set(x, 0, 0);
     this.rig.group.visible = true;
+    setWeaponVisual(this.rig, 'glock');
   }
 
-  heal(n: number) { this.hp = Math.min(PLAYER_HP, this.hp + n); }
+  heal(n: number) { this.hp = Math.min(this.maxHp(), this.hp + n); }
 
   damage(n: number): boolean {
     if (!this.alive) return false;
@@ -62,18 +82,40 @@ export class Player {
   }
 
   startReload() {
-    if (this.reloading || this.ammo === MAG_SIZE || !this.alive) return;
+    if (this.reloading || this.mags[this.spec.id] === this.magSize() || !this.alive) return;
     this.reloading = true;
-    this.reloadT = RELOAD_TIME;
+    this.reloadT = this.spec.reload * this.mods.reloadMul;
+  }
+
+  /** fills the first empty slot and switches to it; no-op if the arsenal is full */
+  giveWeapon(id: WeaponId) {
+    const empty = this.slots.findIndex(s => s === null);
+    if (empty < 0) return;
+    this.slots[empty] = id;
+    this.mags[id] = this.magSizeFor(id);
+    this.selectSlot(empty);
+  }
+
+  selectSlot(i: number) {
+    if (i < 0 || i > 3 || i === this.slot || !this.slots[i] || !this.alive) return;
+    this.reloading = false;
+    this.slot = i;
+    this.swapT = 0.35;
+    this.fireT = Math.max(this.fireT, 0.2);
+    this.triggerLatch = false;
+    setWeaponVisual(this.rig, this.slots[i]!);
   }
 
   /** attempt a shot — Game performs the actual hitscan when it returns 'fired' */
   tryFire(): 'fired' | 'auto' | 'blocked' {
-    if (!this.alive || this.reloading || this.fireT > 0) return 'blocked';
-    if (this.ammo <= 0) { this.fireT = 0.3; this.startReload(); return 'auto'; }
-    this.ammo--;
-    this.fireT = FIRE_COOLDOWN;
-    this.kick = Math.min(1, this.kick + 0.55);
+    if (!this.alive || this.reloading || this.swapT > 0 || this.fireT > 0) return 'blocked';
+    const spec = this.spec;
+    if (!spec.auto && this.triggerLatch) return 'blocked';
+    if (this.mags[spec.id] <= 0) { this.fireT = 0.3; this.startReload(); return 'auto'; }
+    this.mags[spec.id]--;
+    this.fireT = spec.cooldown / this.mods.rateMul;
+    this.kick = Math.min(1, this.kick + spec.kick);
+    this.triggerLatch = true;
     return 'fired';
   }
 
@@ -95,7 +137,7 @@ export class Player {
     }
 
     // ── movement ──
-    const speed = this.sprint ? SPRINT_SPEED : RUN_SPEED;
+    const speed = (this.sprint ? SPRINT_SPEED : RUN_SPEED) * this.mods.speedMul;
     const targetVx = locked ? 0 : this.moveAxis * speed;
     this.vx = THREE.MathUtils.damp(this.vx, targetVx, 14, dt);
     this.x += this.vx * dt;
@@ -118,12 +160,14 @@ export class Player {
       }
     } else { this.airT = 0; if (this.vy < 0) this.vy = 0; }
 
-    // ── fire-rate & reload timers ──
+    // ── fire-rate, reload & weapon-swap timers ──
     this.fireT -= dt;
+    this.swapT = Math.max(0, this.swapT - dt);
     if (this.reloading) {
       this.reloadT -= dt;
-      if (this.reloadT <= 0) { this.reloading = false; this.ammo = MAG_SIZE; }
+      if (this.reloadT <= 0) { this.reloading = false; this.mags[this.spec.id] = this.magSize(); }
     }
+    if (!this.triggerHeld) this.triggerLatch = false;
 
     // ── facing + aim ──
     const wantFace = this.aimX >= this.x ? 1 : -1;

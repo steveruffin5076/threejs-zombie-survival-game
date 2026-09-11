@@ -57,6 +57,17 @@
 @keyframes blinkAnim { 50% { opacity: 0.25; } }
 
 .hp-fill { box-shadow: 0 0 12px rgba(220,30,45,0.4); }
+.xp-fill { box-shadow: 0 0 10px rgba(176,107,255,0.4); }
+
+/* weapon strip (endless arsenal, slots 1-4) */
+.wslot {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  width: 46px; height: 38px; gap: 1px;
+  background: rgba(8,9,12,0.72); border: 1px solid rgba(120,120,130,0.3);
+  color: #55555c; font-family: 'Oswald', sans-serif;
+}
+.wslot.owned { color: #c9c9d0; }
+.wslot.active { border-color: #ff4152; color: #ffdfe2; box-shadow: 0 0 10px rgba(255,40,55,0.3); }
 
 /* hint bar */
 .hint-bar {
@@ -116,6 +127,26 @@
 .btn-primary:hover { border-color: #ff5c6a; color: #fff; }
 .kbd { border: 1px solid rgba(255,255,255,0.35); padding: 1px 7px; font-size: 10px; margin-left: 4px;
   font-family: 'Special Elite', monospace; opacity: 0.7; }
+
+/* ── level-up cards (endless) ──────────────────────────────────────────────── */
+.pick-card {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  width: 250px; text-align: left; cursor: pointer;
+  font-family: 'Oswald', sans-serif; color: #c9c9d0;
+  background: rgba(10,10,12,0.9); border: 1px solid #3a3a42;
+  padding: 22px 18px; transition: all 0.16s ease; position: relative;
+}
+.pick-card:hover, .pick-card:focus-visible {
+  border-color: #ff4152; background: rgba(60,8,12,0.75);
+  transform: translateY(-3px);
+  box-shadow: 0 0 22px rgba(255,40,55,0.25);
+  outline: none;
+}
+.pick-card:active { transform: translateY(-1px) scale(0.99); }
+.pick-card .kbd { position: absolute; top: 10px; right: 10px; }
+.pick-card-title { font-size: 15px; letter-spacing: 0.12em; color: #e8e4da; }
+.pick-card-sub { font-family: 'Special Elite', monospace; font-size: 12px; letter-spacing: 0.03em; color: #8d8d95; }
+.pick-card-stat { font-size: 12px; letter-spacing: 0.08em; color: #51ff7a; margin-top: 2px; }
 
 /* ── start menu ────────────────────────────────────────────────────────────── */
 .menu-bg { background: radial-gradient(ellipse at 50% 30%, rgba(24,6,9,0.4), rgba(0,0,0,0.72) 78%); }

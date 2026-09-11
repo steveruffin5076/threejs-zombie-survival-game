@@ -1,6 +1,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // state.ts — shared types, act palettes & global tuning constants
 // ─────────────────────────────────────────────────────────────────────────────
+import { WEAPONS } from './weapons';
 
 export type Phase =
   | 'menu'        // start screen
@@ -9,7 +10,10 @@ export type Phase =
   | 'stageclear'  // reached the safe house
   | 'gameover'    // died
   | 'victory'     // campaign complete
-  | 'paused';     // paused overlay
+  | 'paused'      // paused overlay
+  | 'levelup';    // endless: freeze + choose a card
+
+export type GameMode = 'campaign' | 'endless';
 
 export interface ActPalette {
   name: string;          // display name
@@ -86,13 +90,13 @@ export const ACTS: ActPalette[] = [
   },
 ];
 
-// ── weapon ───────────────────────────────────────────────────────────────────
-export const MAG_SIZE = 15;            // Glock 19 magazine
-export const RELOAD_TIME = 1.05;       // seconds
-export const FIRE_COOLDOWN = 0.135;    // semi-auto rate cap
-export const DMG_BODY = 30;
-export const DMG_HEAD = 70;
-export const MAX_RANGE = 34;
+// ── weapon (aliases onto the Glock 19 spec — kept for any remaining call sites) ─
+export const MAG_SIZE = WEAPONS.glock.mag;
+export const RELOAD_TIME = WEAPONS.glock.reload;
+export const FIRE_COOLDOWN = WEAPONS.glock.cooldown;
+export const DMG_BODY = WEAPONS.glock.dmgBody;
+export const DMG_HEAD = WEAPONS.glock.dmgHead;
+export const MAX_RANGE = WEAPONS.glock.range;
 
 // ── player ───────────────────────────────────────────────────────────────────
 export const PLAYER_HP = 100;
@@ -111,13 +115,21 @@ export function stageLength(act: number, stage: number): number {
   return 190 + act * 22 + stage * 12;
 }
 
+export interface HudSlot { id: string; name: string; ammo: number; mag: number; owned: boolean }
+export interface HudCard { id: string; kind: 'weapon' | 'perk'; title: string; sub: string; stat: string }
+
 export interface HudState {
   phase: Phase;
+  mode: GameMode;
   hp: number;
   maxHp: number;
   ammo: number;
   magSize: number;
   reloading: boolean;
+  weaponName: string;
+  weaponId: string;
+  slots: HudSlot[];      // arsenal slots 1..4 (endless only; campaign stays [glock, empty, empty, empty])
+  slotIdx: number;
   act: number;          // 1..4
   stage: number;        // 1..4
   actName: string;
@@ -133,15 +145,28 @@ export interface HudState {
   hurtTick: number;     // increments every time the player is hit (for css flash)
   finalKills: number;
   finalTime: number;
+  // endless-only
+  level: number;
+  xp: number;
+  xpNext: number;
+  wave: number;
+  waveTimeLeft: number;
+  intermission: boolean;
+  cards: HudCard[];
 }
 
 export const initialHud: HudState = {
   phase: 'menu',
+  mode: 'campaign',
   hp: PLAYER_HP,
   maxHp: PLAYER_HP,
   ammo: MAG_SIZE,
   magSize: MAG_SIZE,
   reloading: false,
+  weaponName: WEAPONS.glock.name,
+  weaponId: WEAPONS.glock.id,
+  slots: [{ id: 'glock', name: WEAPONS.glock.short, ammo: MAG_SIZE, mag: MAG_SIZE, owned: true }],
+  slotIdx: 0,
   act: 1, stage: 1,
   actName: ACTS[0].name,
   actSubtitle: ACTS[0].subtitle,
@@ -152,4 +177,7 @@ export const initialHud: HudState = {
   muted: false,
   hurtTick: 0,
   finalKills: 0, finalTime: 0,
+  level: 1, xp: 0, xpNext: 100,
+  wave: 0, waveTimeLeft: 0, intermission: false,
+  cards: [],
 };

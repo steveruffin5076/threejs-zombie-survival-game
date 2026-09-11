@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import * as THREE from 'three';
 import { bloodSpriteTexture } from './textures';
+import { WEAPON_IDS, type WeaponId } from './weapons';
 
 const box = (w: number, h: number, d: number, mat: THREE.Material) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
 
@@ -53,13 +54,87 @@ function buildGlock(): GunRig {
   return { group: g, muzzle, eject };
 }
 
+// ── MP5 (fast full-auto SMG) ──────────────────────────────────────────────────
+function buildMP5(): GunRig {
+  const g = new THREE.Group();
+  const receiver = box(0.3, 0.075, 0.05, M.gunMetal); receiver.position.set(0.02, 0.03, 0);
+  const shroud = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.12, 8), M.gunMetal);
+  shroud.rotation.z = Math.PI / 2; shroud.position.set(0.21, 0.03, 0);
+  const grip = box(0.05, 0.13, 0.045, M.gunPoly); grip.position.set(-0.06, -0.075, 0); grip.rotation.z = 0.22;
+  const mag = box(0.045, 0.16, 0.04, M.gunPoly); mag.position.set(0.02, -0.09, 0); mag.rotation.z = 0.12;
+  const stock = box(0.14, 0.05, 0.04, M.gunMetal); stock.position.set(-0.17, 0.02, 0);
+  const foregrip = box(0.05, 0.09, 0.045, M.gunPoly); foregrip.position.set(0.17, -0.04, 0);
+  g.add(receiver, shroud, grip, mag, stock, foregrip);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0.3, 0.03, 0);
+  const eject = new THREE.Object3D(); eject.position.set(0.06, 0.06, 0.035);
+  g.add(muzzle, eject);
+  g.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+  return { group: g, muzzle, eject };
+}
+
+// ── Shotgun (pump, 7-shell tube) ───────────────────────────────────────────────
+function buildShotgun(): GunRig {
+  const g = new THREE.Group();
+  const receiver = box(0.26, 0.08, 0.055, M.gunMetal); receiver.position.set(0, 0.03, 0);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.42, 8), M.gunMetal);
+  barrel.rotation.z = Math.PI / 2; barrel.position.set(0.36, 0.04, 0);
+  const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.38, 8), M.gunPoly);
+  tube.rotation.z = Math.PI / 2; tube.position.set(0.34, -0.005, 0);
+  const pump = box(0.12, 0.055, 0.055, M.gunPoly); pump.position.set(0.26, -0.005, 0);
+  const wrist = box(0.06, 0.11, 0.05, M.gunPoly); wrist.position.set(-0.08, -0.06, 0); wrist.rotation.z = 0.3;
+  const stock = box(0.24, 0.09, 0.05, M.gunPoly); stock.position.set(-0.24, -0.01, 0); stock.rotation.z = -0.06;
+  g.add(receiver, barrel, tube, pump, wrist, stock);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0.58, 0.04, 0);
+  const eject = new THREE.Object3D(); eject.position.set(0.02, 0.05, 0.035);
+  g.add(muzzle, eject);
+  g.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+  return { group: g, muzzle, eject };
+}
+
+// ── M4A1 (full-auto rifle) ─────────────────────────────────────────────────────
+function buildM4A1(): GunRig {
+  const g = new THREE.Group();
+  const upper = box(0.36, 0.06, 0.05, M.gunMetal); upper.position.set(0.06, 0.045, 0);
+  const handguard = box(0.2, 0.055, 0.05, M.gunPoly); handguard.position.set(0.3, 0.04, 0);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.013, 0.14, 8), M.gunMetal);
+  barrel.rotation.z = Math.PI / 2; barrel.position.set(0.46, 0.04, 0);
+  const optic = box(0.1, 0.035, 0.03, M.gunMetal); optic.position.set(0.06, 0.085, 0);
+  const mag = box(0.05, 0.17, 0.04, M.gunPoly); mag.position.set(-0.01, -0.09, 0); mag.rotation.z = 0.1;
+  const grip = box(0.05, 0.12, 0.045, M.gunPoly); grip.position.set(-0.09, -0.07, 0); grip.rotation.z = 0.28;
+  const stock = box(0.22, 0.07, 0.045, M.gunMetal); stock.position.set(-0.22, 0.02, 0);
+  g.add(upper, handguard, barrel, optic, mag, grip, stock);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0.54, 0.04, 0);
+  const eject = new THREE.Object3D(); eject.position.set(0.14, 0.065, 0.035);
+  g.add(muzzle, eject);
+  g.traverse(o => { if ((o as THREE.Mesh).isMesh) o.castShadow = true; });
+  return { group: g, muzzle, eject };
+}
+
+const HAND_L_POS: Record<WeaponId, [number, number, number]> = {
+  glock: [0.36, -0.03, -0.04],
+  mp5: [0.55, -0.05, -0.03],
+  shotgun: [0.64, -0.03, -0.03],
+  m4a1: [0.68, -0.02, -0.03],
+};
+const ARM_L_SCALE: Record<WeaponId, number> = { glock: 1.0, mp5: 1.35, shotgun: 1.5, m4a1: 1.55 };
+
+/** switches the visible gun mesh + repositions the support hand/arm for its length */
+export function setWeaponVisual(rig: PlayerRig, id: WeaponId) {
+  for (const k of WEAPON_IDS) rig.guns[k].group.visible = k === id;
+  rig.gun = rig.guns[id];
+  rig.handL.position.set(...HAND_L_POS[id]);
+  rig.armL.scale.x = ARM_L_SCALE[id];
+}
+
 // ── Survivor ─────────────────────────────────────────────────────────────────
 export interface PlayerRig {
   group: THREE.Group;
   legL: THREE.Group; legR: THREE.Group;
   torso: THREE.Group; head: THREE.Group;
   aim: THREE.Group;        // rotate.z = aim pitch (built facing +x)
-  gun: GunRig;
+  handL: THREE.Mesh; armL: THREE.Mesh;
+  guns: Record<WeaponId, GunRig>;
+  gun: GunRig;              // active gun, repointed by setWeaponVisual
 }
 export function buildPlayer(): PlayerRig {
   const group = new THREE.Group();
@@ -88,18 +163,32 @@ export function buildPlayer(): PlayerRig {
   const beard = box(0.06, 0.1, 0.2, M.hair); beard.position.set(0.11, -0.08, 0);
   head.add(skull, capTop, brim, beard);
 
-  // aim rig — both arms + glock rotate as one around the shoulder pivot
+  // aim rig — both arms + the active gun rotate as one around the shoulder pivot
   const aim = new THREE.Group(); aim.position.set(0.04, 1.4, 0);
   const armR = box(0.36, 0.11, 0.12, M.jacket); armR.position.set(0.18, -0.02, 0.16);
   const handR = box(0.09, 0.1, 0.1, M.skin); handR.position.set(0.38, -0.02, 0.16);
   const armL = box(0.34, 0.11, 0.12, M.jacket); armL.position.set(0.17, -0.06, -0.15); armL.rotation.y = 0.16;
   const handL = box(0.09, 0.1, 0.1, M.skin); handL.position.set(0.36, -0.03, -0.04);
-  const gun = buildGlock(); gun.group.position.set(0.42, 0.03, 0.03);
-  aim.add(armR, handR, armL, handL, gun.group);
+
+  // all four guns are built up front (models.ts never disposes geometry) and toggled by
+  // .visible so switching weapons at runtime is allocation-free
+  const guns: Record<WeaponId, GunRig> = {
+    glock: buildGlock(),
+    mp5: buildMP5(),
+    shotgun: buildShotgun(),
+    m4a1: buildM4A1(),
+  };
+  guns.glock.group.position.set(0.42, 0.03, 0.03);
+  guns.mp5.group.position.set(0.38, 0.01, 0.03);
+  guns.shotgun.group.position.set(0.38, 0.01, 0.03);
+  guns.m4a1.group.position.set(0.38, 0.01, 0.03);
+  for (const id of WEAPON_IDS) guns[id].group.visible = id === 'glock';
+
+  aim.add(armR, handR, armL, handL, guns.glock.group, guns.mp5.group, guns.shotgun.group, guns.m4a1.group);
 
   group.add(legL, legR, torso, head, aim);
   group.traverse(o => { if ((o as THREE.Mesh).isMesh) { o.castShadow = true; o.receiveShadow = false; } });
-  return { group, legL, legR, torso, head, aim, gun };
+  return { group, legL, legR, torso, head, aim, handL, armL, guns, gun: guns.glock };
 }
 
 // ── Zombies ─────────────────────────────────────────────────────────────────
